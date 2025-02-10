@@ -5,6 +5,7 @@
  */
 
 import { Buffer } from "buffer";
+import { error } from "console";
 import { IpcMainInvokeEvent } from "electron";
 
 export async function makeHybridAnalysisRequest(_: IpcMainInvokeEvent, apiKey: string, fileUrl: string) {
@@ -107,7 +108,10 @@ export async function uploadToTriage(_: IpcMainInvokeEvent, apiKey: string, file
 
             body: JSON.stringify({
                 kind: "fetch",
-                url: fileUrl
+                url: fileUrl,
+                defaults: {
+                    timeout: 60
+                }
             })
         });
 
@@ -130,18 +134,39 @@ export async function uploadToTriage(_: IpcMainInvokeEvent, apiKey: string, file
 export async function getTriageResults(_: IpcMainInvokeEvent, apiKey: string, reportID: string) {
     const url = "https://tria.ge/api/v0/samples/" + reportID + "/overview.json";
 
-    try {
-        const res = await fetch(url);
-        const data = await res.json();
+    let attempts = 0;
 
-        if (res.status !== 200) {
-            console.log(data);
-            return { status: -1, data: data.error };
+    try {
+        while (attempts < 3) {
+            const res = await fetch(url, {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + apiKey,
+                },
+            });
+            const data = await res.json();
+
+            console.log(res.status)
+
+            if (res.status !== 200) {
+                console.log(data.error)
+
+                if (data.error == "REPORT_NOT_AVAILABLE") {
+                    attempts++;
+                    if (attempts < 3) {
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                    }
+                }
+
+                return { status: -1, error: data.error, message: data.message };
+            }
+
+            console.log("Triage response: ", data);
+            return { status: res.status, data }
         }
 
-        console.log("Triage response: ", data);
+        return { status: -1, data: "Max retries reached" };
     } catch (e) {
-        console.log("Triage error:", e);
+        return { status: -1, error: e }
     }
 }
-
