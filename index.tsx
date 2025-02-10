@@ -8,7 +8,6 @@ import "./styles.css";
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
-import { Devs } from "@utils/constants";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { Menu } from "@webpack/common";
 
@@ -332,7 +331,16 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }) => 
 export default definePlugin({
     name: "Analyze",
     description: "Analyze messages using Hybrid Analysis and VirusTotal",
-    authors: [Devs.Nay, Devs.Marco],
+    authors: [
+        {
+            name: "nay-cat",
+            id: 1159977353661919363n
+        },
+        {
+            name: "shit.cord",
+            id: 298195869247995904n
+        }
+    ],
     settings,
     contextMenus: {
         "message": messageCtxPatch
