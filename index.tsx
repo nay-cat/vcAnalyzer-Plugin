@@ -40,14 +40,15 @@ var details: Array<{ message: string; type: "safe" | "suspicious" | "malicious" 
 
 
 async function analyzeFile(url: string, messageId: string) {
-    // const details: Array<{ message: string; type: "safe" | "suspicious" | "malicious" | "neutral"; }> = [];
+    if (details.length) {
+        details.length = 0
+    }
 
     const [hybridResponse, vtResponse, triageResponse] = await Promise.all([
         Native.makeHybridAnalysisRequest(settings.store.hybridAnalysisApiKey, url),
         Native.makeVirusTotalRequest(settings.store.virusTotalApiKey, url),
         Native.uploadToTriage(settings.store.triageApiKey, url)
     ]);
-
 
     try {
         const hybridAnalysisData = typeof hybridResponse.data === "string" ? JSON.parse(hybridResponse.data) : hybridResponse.data;
@@ -127,7 +128,7 @@ async function analyzeFile(url: string, messageId: string) {
             //* Delete the "pending"
             details.pop()
 
-            if (triageResponse.status === 200) {
+            if (triageResults.status === 200) {
                 processTriageReport(triageResults)
             } else {
                 details.push({
@@ -252,23 +253,23 @@ async function processVTReport(report) {
 async function processTriageReport(triageResults) {
     const triageData = triageResults.data;
 
-    // Triage doesn't have a "verdict" field, it uses the score (https://tria.ge/docs/scoring/)
-    var verdict = "pending";
 
     console.log("triageReport: " + JSON.stringify(triageData, null, 2));
 
+    // Triage doesn't have a "verdict" field, it uses the score (https://tria.ge/docs/scoring/)
+    var verdict = "safe";
 
     var triageScore = triageData.analysis.score;
 
-    if (triageScore < 5) {
+    if (triageScore >= 5 && triageScore < 6) {
         verdict = "neutral"
     }
 
-    if (triageScore < 6) {
+    if (triageScore >= 6 && triageScore < 8) {
         verdict = "suspicious"
     }
 
-    if (triageScore < 8) {
+    if (triageScore > 8) {
         verdict = "malicious"
     }
 

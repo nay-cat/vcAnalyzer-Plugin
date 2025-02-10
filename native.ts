@@ -137,6 +137,7 @@ export async function getTriageResults(_: IpcMainInvokeEvent, apiKey: string, re
     let attempts = 0;
 
     try {
+        
         while (attempts < 3) {
             const res = await fetch(url, {
                 headers: {
@@ -144,20 +145,21 @@ export async function getTriageResults(_: IpcMainInvokeEvent, apiKey: string, re
                     "Authorization": "Bearer " + apiKey,
                 },
             });
+
             const data = await res.json();
 
-            console.log(res.status)
+            if (res.status === 404 && data.error == "REPORT_NOT_AVAILABLE") {
+                attempts++;
+            
+                if (attempts < 3) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    continue
+                }
+            
+                break
+            }
 
             if (res.status !== 200) {
-                console.log(data.error)
-
-                if (data.error == "REPORT_NOT_AVAILABLE") {
-                    attempts++;
-                    if (attempts < 3) {
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                    }
-                }
-
                 return { status: -1, error: data.error, message: data.message };
             }
 
@@ -166,6 +168,7 @@ export async function getTriageResults(_: IpcMainInvokeEvent, apiKey: string, re
         }
 
         return { status: -1, data: "Max retries reached" };
+
     } catch (e) {
         return { status: -1, error: e }
     }
