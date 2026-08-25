@@ -7,9 +7,10 @@
 import { PluginNative } from "@utils/types";
 import { Modal, openModal, React, Toasts } from "@webpack/common";
 
-import { safeToast } from "../../utils";
-import { CordCatModal } from "./CordCatModal";
 import { settings } from "../../settings";
+import { AnalysisValue, safeToast } from "../../utils";
+import { ReputationField, ReputationSection } from "../ReputationModal";
+import { CordCatModal } from "./CordCatModal";
 
 const Native = VencordNative.pluginHelpers.vAnalyzer as PluginNative<typeof import("./native")>;
 
@@ -29,7 +30,7 @@ export async function analyzeUserWithCordCat(userId: string, username: string): 
         return;
     }
 
-    const data = result.data;
+    const { data } = result;
     const statements: any[] = data.statements ?? [];
     const breachCount: number = data.breach?.resultsCount ?? 0;
 
@@ -50,4 +51,68 @@ export async function analyzeUserWithCordCat(userId: string, username: string): 
             <CordCatModal data={data} />
         </Modal>
     ));
+}
+
+/** Runs the lookup and returns the raw payload, or null on failure. */
+async function fetchCordCat(userId: string): Promise<any | null> {
+    const apiKey = settings.store.cordCatApiKey?.trim();
+    if (!apiKey) return null;
+
+    const result = await Native.queryCordCat(userId, apiKey);
+    if (result.status !== 200) return null;
+
+    return result.data;
+}
+
+/** Structured view of the lookup, for the reputation modal. */
+export async function describeCordCat(userId: string, userName: string): Promise<ReputationSection> {
+    const apiKey = settings.store.cordCatApiKey?.trim();
+    if (!apiKey) {
+        return { service: "CordCat", verdict: "error", summary: "No API key", error: "Set a CordCat API key in vAnalyzer settings." };
+    }
+
+    const data = await fetchCordCat(userId);
+    if (!data) {
+        return { service: "CordCat", verdict: "error", summary: "Lookup failed", error: "Could not reach CordCat" };
+    }
+
+    const statements: any[] = data.statements ?? [];
+    const breachCount: number = data.breach?.resultsCount ?? data.breach?.data?.results?.length ?? 0;
+    const fivemTotal: number = data.fivem?.data?.total ?? 0;
+    const { score } = data;
+
+    const fields: ReputationField[] = [];
+    fields.push({ label: "Sanctions", value: String(statements.length) });
+    fields.push({ label: "Breaches", value: String(breachCount) });
+    if (fivemTotal > 0) fields.push({ label: "FiveM records", value: String(fivemTotal) });
+    if (score) fields.push({ label: "Risk", value: `${score.risk} (${score.level})` });
+    if (score?.bot?.isBot) fields.push({ label: "Bot likelihood", value: `${score.bot.level} (${score.bot.score}/100)` });
+
+    let verdict: ReputationSection["verdict"];
+    let summary: string;
+    if (statements.length > 0) {
+        verdict = "malicious";
+        summary = `${statements.length} Discord sanction(s) on record`;
+    } else if (breachCount > 0) {
+        verdict = "suspicious";
+        summary = `Appears in ${breachCount} data breach(es)`;
+    } else {
+        verdict = "safe";
+        summary = `No sanctions or breaches for ${userName}`;
+    }
+
+    return { service: "CordCat", verdict, summary, fields };
+}
+
+/** Adapter matching the shared user-reputation service signature. */
+export async function analyzeUserWithCordCatReputation(userId: string, userName: string): Promise<AnalysisValue | null> {
+    const section = await describeCordCat(userId, userName);
+    if (section.verdict === "error") return null;
+
+    const details: AnalysisValue["details"] = [{
+        message: `[CordCat] ${section.summary}`,
+        type: section.verdict === "malicious" ? "malicious" : section.verdict === "suspicious" ? "suspicious" : "safe"
+    }];
+
+    return { details, timestamp: Date.now() };
 }

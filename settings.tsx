@@ -29,6 +29,52 @@ function CordCatRegisterLink() {
     );
 }
 
+function ThirdPartyNotice() {
+    return (
+        <Paragraph
+            size="xs"
+            style={{ color: "var(--text-muted)", marginTop: "4px", lineHeight: "1.4" }}
+        >
+            Community-run scanners and analyzers, each focused on a specific field such as Minecraft
+            files or Discord user reputation. Every check sends a request to their servers with what you
+            look up (file hashes, Discord user IDs, anything you submit), with everything that involves:
+            they may log those requests, rate-limit you or be down entirely.
+        </Paragraph>
+    );
+}
+
+function ThirdPartyLinks() {
+    return (
+        <Paragraph size="xs" style={{ color: "var(--text-muted)", marginTop: "4px" }}>
+            Learn more: <Link href="https://cord.cat/">CordCat</Link>
+            {" · "}
+            <Link href="https://status.dangercord.com/">Dangercord</Link>
+            {" · "}
+            <Link href="https://discord.gg/wEDbPRHyeB">Ratter Scanner</Link>
+            {" · "}
+            <Link href="https://ubfb.theindiebrand.es">UBFB</Link>
+            {" · "}
+            <Link href="https://xnprotect.com/">XN Protect</Link>
+        </Paragraph>
+    );
+}
+
+type ThirdPartyKey = "autoScanFilesRatterScanner" | "enableCordCat" | "enableDangercord" | "enableUbfb" | "enableXnProtect";
+
+// show once
+function warnThirdParty(key: ThirdPartyKey, enabled: boolean) {
+    if (!enabled || settings.store.thirdPartyNoticeAcknowledged) return;
+
+    Alerts.show({
+        title: "Community Scanner",
+        body: "This is a community-run scanner focused on a specific field, not a general antivirus. Every check sends a request to their servers with what you look up (file hashes, Discord user IDs, anything you submit), with everything that involves: they may log those requests under their own privacy and retention rules, rate-limit you, or be unavailable at any time.",
+        confirmText: "I understand",
+        cancelText: "Cancel",
+        onConfirm: () => { settings.store.thirdPartyNoticeAcknowledged = true; },
+        onCancel: () => { settings.store[key] = false; }
+    });
+}
+
 function warnAutoScan(key: "autoScanUrls" | "autoScanFiles", enabled: boolean) {
     if (!enabled) return;
 
@@ -45,6 +91,18 @@ function warnAutoScan(key: "autoScanUrls" | "autoScanFiles", enabled: boolean) {
         confirmText: "I understand",
         cancelText: "Cancel",
         onCancel: () => { settings.store[key] = false; }
+    });
+}
+
+function warnUbfbReporting(enabled: boolean) {
+    if (!enabled) return;
+
+    Alerts.show({
+        title: "UBFB Reporting Warning",
+        body: "Reports submitted to UBFB are public accusations against real people. Your Discord ID and username are attached, the pending queue is readable by anyone, and reports cannot be withdrawn from this plugin. Only report with genuine evidence.",
+        confirmText: "I understand",
+        cancelText: "Cancel",
+        onCancel: () => { settings.store.enableUbfbReporting = false; }
     });
 }
 
@@ -111,14 +169,10 @@ export const settings = definePluginSettings(
             description: "Show Search User / Search Server shortcuts in context menus",
             default: true
         },
-        enableCordCat: {
-            type: OptionType.BOOLEAN,
-            description: "Show \"Analyze User with CordCat\" in user context menus",
-            default: true
-        },
         enableFindUserById: {
             type: OptionType.BOOLEAN,
-            description: "Show \"Find User by ID\" in message context menus (look up any user ID via CordCat)",
+            displayName: "Find User by ID (deprecated)",
+            description: "Deprecated: use Vencord's built-in ValidUser plugin instead, which resolves unknown users directly in chat. Shows \"Find User by ID\" in message context menus",
             default: false
         },
 
@@ -241,6 +295,74 @@ export const settings = definePluginSettings(
             description: "Scan files with Hybrid Analysis (requires API Key)",
             default: true,
             disabled: () => !settings.store.autoScanFiles
+        },
+
+        thirdPartyHeader: {
+            type: OptionType.COMPONENT,
+            component: () => <SeparatorSettings label="Community Scanners & Analyzers" />
+        },
+        thirdPartyNotice: {
+            type: OptionType.COMPONENT,
+            component: ThirdPartyNotice
+        },
+        thirdPartyNoticeAcknowledged: {
+            type: OptionType.BOOLEAN,
+            description: "Internal: whether the third-party notice has been acknowledged",
+            default: false,
+            hidden: true
+        },
+        enableCordCat: {
+            type: OptionType.BOOLEAN,
+            displayName: "CordCat",
+            description: "Check users for Discord sanctions, data breaches and risk scoring (requires API key)",
+            default: true,
+            onChange: (v: boolean) => warnThirdParty("enableCordCat", v)
+        },
+        enableDangercord: {
+            type: OptionType.BOOLEAN,
+            displayName: "Dangercord",
+            description: "Check users against the Dangercord blacklist and report counts",
+            default: false,
+            onChange: (v: boolean) => warnThirdParty("enableDangercord", v)
+        },
+        autoScanFilesRatterScanner: {
+            type: OptionType.BOOLEAN,
+            displayName: "Ratter Scanner",
+            description: "Look up .jar attachments in the Ratter Scanner database of known malicious and known safe Minecraft files",
+            default: false,
+            onChange: (v: boolean) => warnThirdParty("autoScanFilesRatterScanner", v)
+        },
+        enableUbfb: {
+            type: OptionType.BOOLEAN,
+            displayName: "UBFB",
+            description: "Check users against a community-run shared blacklist of scam, raid and dox reports",
+            default: false,
+            onChange: (v: boolean) => warnThirdParty("enableUbfb", v)
+        },
+        enableUbfbReporting: {
+            type: OptionType.BOOLEAN,
+            displayName: "UBFB reporting",
+            description: "Submit reports to UBFB from the context menu. Public, permanent and tied to your account",
+            default: false,
+            disabled: () => !settings.store.enableUbfb,
+            onChange: (v: boolean) => warnUbfbReporting(v)
+        },
+        enableXnProtect: {
+            type: OptionType.BOOLEAN,
+            displayName: "XN Protect",
+            description: "Check users against a community global-ban list for Discord",
+            default: false,
+            onChange: (v: boolean) => warnThirdParty("enableXnProtect", v)
+        },
+        unifyUserReputationChecks: {
+            type: OptionType.BOOLEAN,
+            displayName: "Combine user checks",
+            description: "Show one \"Scan user reputation\" entry instead of one per service",
+            default: true
+        },
+        thirdPartyLinks: {
+            type: OptionType.COMPONENT,
+            component: ThirdPartyLinks
         },
 
         filterHeader: {

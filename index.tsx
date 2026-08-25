@@ -9,20 +9,24 @@ import "./style/styles.css";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
 import { Message } from "@vencord/discord-types";
-import { Alerts, Menu, Modal, openModal, React, TextInput, useState } from "@webpack/common";
+import { Alerts, Menu, React } from "@webpack/common";
 
 import { LinkIcon, OpenExternalIcon, SafetyIcon } from "@components/Icons";
 
 import { AnalysisAccessory, handleAnalysis } from "./AnalysisAccesory";
 import { getThreat } from "./threatStore";
 import { analyzeUserWithCordCat } from "./analyzers/CordCat";
-import { lookDangeCord } from "./analyzers/Dangercord";
 import { analyzeDiscordInvite, isDiscordInvite } from "./analyzers/DiscordInvite";
 import { analyzeFileWithHybridAnalysis, analyzeUrlWithHybridAnalysis } from "./analyzers/HybridAnalysis";
 import { analyzeWithCertPL } from "./analyzers/CertPL";
 import { analyzeWithCrtSh } from "./analyzers/CrtSh";
 import { analyzeWithFishFish } from "./analyzers/FishFish";
 import { analyzeWithSucuri } from "./analyzers/Sucuri";
+import { analyzeFileWithRatterScanner, isJarFile } from "./analyzers/RatterScanner";
+import { analyzeUserReputation, getEnabledReputationServices, isUnifiedMode } from "./analyzers/userReputation";
+import { analyzeUserReputationEntry } from "./analyzers/reputationEntry";
+import { openFindUserByIdModal } from "./components/modals/FindUserByIdModal";
+import { openUbfbReportModal } from "./components/modals/UbfbReportModal";
 import { analyzeWithVirusTotal } from "./analyzers/VirusTotal";
 import { analyzeWithWhereGoes } from "./analyzers/WhereGoes";
 import { runModularScan } from "./analyzers/ModularScan";
@@ -46,28 +50,31 @@ async function genericAnalyzeFile(messageId: string, fileUrl: string, fileName: 
     }
 }
 
-async function analyzeUser(messageId: string | undefined, user: any, silent = false) {
-    const result = await lookDangeCord(user, silent);
-    if (!result) return;
+/** Builds the reputation menu entries one combined, or one per enabled service. */
+function buildReputationMenuItems(messageId: string | undefined, userId: string, userName: string, prefix: string) {
+    const services = getEnabledReputationServices();
+    if (!services.length) return [];
 
-    if (messageId) {
-        handleAnalysis(messageId, result);
-        return;
+    if (isUnifiedMode()) {
+        return [(
+            <Menu.MenuItem
+                id={`${prefix}-reputation`}
+                key="reputation"
+                label="Scan user reputation"
+                icon={SafetyIcon}
+                action={() => analyzeUserReputationEntry(messageId, userId, userName, analyzeUserReputation, "User Reputation", true)}
+            />
+        )];
     }
 
-    openModal(modalProps => (
-        <Modal
-            {...modalProps}
-            size="sm"
-            title="Dangercord Analysis"
-            actions={[{ text: "Close", variant: "secondary", onClick: modalProps.onClose }]}
-        >
-            {result.details.map((detail, i) => (
-                <div key={i} className={`vc-analyze-detail vc-analyze-${detail.type}`} style={{ marginBottom: "6px" }}>
-                    {detail.message}
-                </div>
-            ))}
-        </Modal>
+    return services.map(service => (
+        <Menu.MenuItem
+            id={`${prefix}-reputation-${service.id}`}
+            key={service.id}
+            label={`Scan user with ${service.label}`}
+            icon={SafetyIcon}
+            action={() => analyzeUserReputationEntry(messageId, userId, userName, service.run, `${service.label} Analysis`, true, service)}
+        />
     ));
 }
 
@@ -83,44 +90,6 @@ function extractUserIdFromContext(context: any): string | undefined {
     if ((typeof id === "number" || typeof id === "bigint") && /^\d{17,20}$/.test(String(id))) return String(id);
 
     return undefined;
-}
-
-function FindUserByIdModal({ modalProps }: { modalProps: any; }) {
-    const [userId, setUserId] = useState("");
-
-    function submit() {
-        const id = userId.trim();
-        if (!id) return;
-        modalProps.onClose();
-        analyzeUserWithCordCat(id, id);
-    }
-
-    return (
-        <Modal
-            {...modalProps}
-            size="sm"
-            title="Find User by ID - CordCat"
-            actions={[
-                { text: "Look Up", variant: "primary", onClick: submit, disabled: !userId.trim() },
-                { text: "Cancel", variant: "secondary", onClick: modalProps.onClose },
-            ]}
-        >
-            <p style={{ marginBottom: "10px", color: "var(--text-muted)", fontSize: "13px" }}>
-                Enter a Discord User ID to query CordCat:
-            </p>
-            <TextInput
-                autoFocus
-                placeholder="447812212241989632"
-                value={userId}
-                onChange={setUserId}
-                onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") submit(); }}
-            />
-        </Modal>
-    );
-}
-
-function openFindUserByIdModal() {
-    openModal(modalProps => <FindUserByIdModal modalProps={modalProps} />);
 }
 
 function getUserSearchLinks(userId: string) {
@@ -156,7 +125,14 @@ const urlAnalyzers = [
 const fileAnalyzers = [
     { id: "vt", label: "Scan file with VirusTotal", fn: (msgId: string, url: string, _name: string) => genericAnalyze(msgId, url, (u, s) => analyzeWithVirusTotal(msgId, u, s)) },
     { id: "ha-file", label: "Scan file with Hybrid Analysis", fn: (msgId: string, url: string, name: string) => genericAnalyzeFile(msgId, url, name, analyzeFileWithHybridAnalysis) },
+    { id: "ratterscanner", label: "Scan file with Ratter Scanner", fn: (msgId: string, url: string, name: string) => genericAnalyzeFile(msgId, url, name, analyzeFileWithRatterScanner), enabled: () => settings.store.autoScanFilesRatterScanner, accepts: isJarFile },
 ];
+
+function getFileAnalyzers(fileNames: string[]) {
+    return fileAnalyzers.filter(a =>
+        (a.enabled?.() ?? true) && (!a.accepts || fileNames.some(a.accepts))
+    );
+}
 
 const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { message: Message; }) => {
     const hasAttachments = !!message.attachments?.length;
@@ -172,15 +148,6 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
         ?? findGroupChildrenByChildId("copy-link", children)
         ?? children;
 
-    group.push(
-        <Menu.MenuItem
-            id="vc-analyze-dangecord"
-            label="Scan author with Dangercord"
-            icon={SafetyIcon}
-            action={() => analyzeUser(message.id, message.author)}
-        />
-    );
-
     if (settings.store.enableCordCat) {
         const authorName = message.author.username || message.author.id;
         group.push(
@@ -193,11 +160,32 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
         );
     }
 
+    {
+        const authorName = message.author.username || message.author.id;
+        group.push(...buildReputationMenuItems(message.id, message.author.id, authorName, "vc-analyze-author"));
+
+        if (settings.store.enableUbfb && settings.store.enableUbfbReporting) {
+            const imageProofs = (message.attachments ?? [])
+                .filter(a => a.content_type?.toLowerCase().startsWith("image/"))
+                .map(a => a.url);
+
+            group.push(
+                <Menu.MenuItem
+                    id="vc-analyze-author-ubfb-report"
+                    label="Report author to UBFB..."
+                    icon={SafetyIcon}
+                    color="danger"
+                    action={() => openUbfbReportModal(message.author.id, authorName, imageProofs)}
+                />
+            );
+        }
+    }
+
     if (settings.store.enableFindUserById) {
         group.push(
             <Menu.MenuItem
                 id="vc-analyze-find-user-by-id"
-                label="Find User by ID"
+                label="Find User by ID (deprecated)"
                 icon={SafetyIcon}
                 action={openFindUserByIdModal}
             />
@@ -207,14 +195,18 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
     if (!hasAttachments && !hasUrls && !hasInvites && !hasCdnFiles) return;
 
     if (hasAttachments) {
-        for (const analyzer of fileAnalyzers) {
-            if (message.attachments.length === 1) {
+        for (const analyzer of getFileAnalyzers(message.attachments.map(a => a.filename))) {
+            const attachments = analyzer.accepts
+                ? message.attachments.filter(a => analyzer.accepts!(a.filename))
+                : message.attachments;
+
+            if (attachments.length === 1) {
                 group.push(
                     <Menu.MenuItem
                         id={`vc-analyze-${analyzer.id}`}
                         label={analyzer.label}
                         icon={SafetyIcon}
-                        action={() => analyzer.fn(message.id, message.attachments[0].url, message.attachments[0].filename)}
+                        action={() => analyzer.fn(message.id, attachments[0].url, attachments[0].filename)}
                     />
                 );
             } else {
@@ -224,7 +216,7 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
                         label={analyzer.label}
                         icon={SafetyIcon}
                     >
-                        {message.attachments.map((attachment, i) => (
+                        {attachments.map((attachment, i) => (
                             <Menu.MenuItem
                                 id={`vc-analyze-${analyzer.id}-${i}`}
                                 key={attachment.id}
@@ -239,14 +231,18 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
     }
 
     if (hasCdnFiles) {
-        for (const analyzer of fileAnalyzers) {
-            if (cdnFiles.length === 1) {
+        for (const analyzer of getFileAnalyzers(cdnFiles.map(f => f.fileName))) {
+            const files = analyzer.accepts
+                ? cdnFiles.filter(f => analyzer.accepts!(f.fileName))
+                : cdnFiles;
+
+            if (files.length === 1) {
                 group.push(
                     <Menu.MenuItem
                         id={`vc-analyze-cdn-${analyzer.id}`}
-                        label={`${analyzer.label} (${cdnFiles[0].fileName})`}
+                        label={`${analyzer.label} (${files[0].fileName})`}
                         icon={SafetyIcon}
-                        action={() => analyzer.fn(message.id, cdnFiles[0].url, cdnFiles[0].fileName)}
+                        action={() => analyzer.fn(message.id, files[0].url, files[0].fileName)}
                     />
                 );
             } else {
@@ -256,7 +252,7 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
                         label={analyzer.label}
                         icon={SafetyIcon}
                     >
-                        {cdnFiles.map((file, i) => (
+                        {files.map((file, i) => (
                             <Menu.MenuItem
                                 id={`vc-analyze-cdn-${analyzer.id}-${i}`}
                                 key={file.url}
@@ -423,17 +419,6 @@ const userContextPatch: NavContextMenuPatchCallback = (children, { user, id }: {
         );
     }
 
-    if (user) {
-        children.push(
-            <Menu.MenuItem
-                id="vc-analyze-user-dangecord"
-                label="Analyze User with Dangercord"
-                icon={SafetyIcon}
-                action={() => analyzeUser(undefined, user)}
-            />
-        );
-    }
-
     if (settings.store.enableCordCat && userId) {
         const username = user?.username || userId;
         children.push(
@@ -445,31 +430,65 @@ const userContextPatch: NavContextMenuPatchCallback = (children, { user, id }: {
             />
         );
     }
+
+    if (userId) {
+        const username = user?.username || userId;
+        children.push(...buildReputationMenuItems(undefined, userId, username, "vc-analyze-user"));
+
+        if (settings.store.enableUbfb && settings.store.enableUbfbReporting) {
+            children.push(
+                <Menu.MenuItem
+                    id="vc-analyze-user-ubfb-report"
+                    label="Report User to UBFB..."
+                    icon={SafetyIcon}
+                    color="danger"
+                    action={() => openUbfbReportModal(userId, username)}
+                />
+            );
+        }
+    }
 };
 
 const devContextPatch: NavContextMenuPatchCallback = (children, context: any) => {
-    if (!settings.store.enableCordCat) return;
-
     const userId = extractUserIdFromContext(context);
 
+    if (settings.store.enableCordCat) {
+        if (userId) {
+            children.push(
+                <Menu.MenuItem
+                    id="vc-analyze-dev-context-cordcat"
+                    label="Analyze User with CordCat"
+                    icon={SafetyIcon}
+                    action={() => analyzeUserWithCordCat(userId, userId)}
+                />
+            );
+        } else {
+            children.push(
+                <Menu.MenuItem
+                    id="vc-analyze-dev-context-cordcat"
+                    label="Find User by ID (deprecated)"
+                    icon={SafetyIcon}
+                    action={openFindUserByIdModal}
+                />
+            );
+        }
+    }
+
+    // an unknown user still has a usable ID, so the reputation lookups apply
     if (userId) {
-        children.push(
-            <Menu.MenuItem
-                id="vc-analyze-dev-context-cordcat"
-                label="Analyze User with CordCat"
-                icon={SafetyIcon}
-                action={() => analyzeUserWithCordCat(userId, userId)}
-            />
-        );
-    } else {
-        children.push(
-            <Menu.MenuItem
-                id="vc-analyze-dev-context-cordcat"
-                label="Find User by ID (CordCat)"
-                icon={SafetyIcon}
-                action={openFindUserByIdModal}
-            />
-        );
+        children.push(...buildReputationMenuItems(undefined, userId, userId, "vc-analyze-dev-context"));
+
+        if (settings.store.enableUbfb && settings.store.enableUbfbReporting) {
+            children.push(
+                <Menu.MenuItem
+                    id="vc-analyze-dev-context-ubfb-report"
+                    label="Report User to UBFB..."
+                    icon={SafetyIcon}
+                    color="danger"
+                    action={() => openUbfbReportModal(userId, userId)}
+                />
+            );
+        }
     }
 };
 

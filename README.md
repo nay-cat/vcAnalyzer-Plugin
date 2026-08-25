@@ -32,7 +32,7 @@ vAnalyzer combines three layers:
 1. **Manual analysis** from context menus
 2. **Automatic analysis** when messages arrive (based on configuration)
 3. **Visual enrichment** inside the message (results accessory)
-4. **Custom modular scanning system** <img width="597" height="798" alt="image" src="https://github.com/user-attachments/assets/6b9a4e55-0297-40ed-b09a-d872133dde45" />
+4. **Custom modular scanning system**
 
 
 Features: whitelists/blacklists, local caching and custom modules to connect your own endpoints.
@@ -70,24 +70,38 @@ Search unknown users
 | Connected members | Public widget member list | Discord invite results |
 
 
-### Base Analyzers
+### Community Scanners & Analyzers
 
-| Module | Type | Output | API Key Required |
+Community-run scanners, each focused on a specific field such as Minecraft files or
+Discord user reputation. They are grouped under their own section in the plugin
+settings, because every check sends a request to their servers with whatever you look up (file hashes, Discord user IDs, anything you submit): they may log those requests, rate-limit you or be
+down entirely.
+
+| Service | Target | What it does | API Key |
 | --- | --- | --- | --- |
-| CertPL | Domain | Blocklist status | ✅ No |
-| FishFish | Domain | Phishing check | ✅ No |
-| WhereGoes | URL | Redirect chain | ✅ No |
-| Sucuri | Domain | Reputation rating | ✅ No |
-| CrtSh | Domain | Certificate history | ✅ No |
-| DiscordInvite | Invite | Server info + widget | ✅ No |
-| BotProfile | Bot | Account status | ✅ No |
-| [VirusTotal](https://www.virustotal.com) | File | Scanner verdicts | ⚠️ Partial |
-| [HybridAnalysis](https://hybrid-analysis.com/) | URL/File | Multi-scanner verdicts | ❌ Yes |
-| [Dangercord](https://dangercord.com) | User | Reputation status | ❌ Yes |
-| [CordCat](https://cord.cat/donate) | User | Reputation status | ❌ Yes |
-| WaybackMachine | URL | Web archive snapshot | ✅ No |
-| ModularScan | URL/File | Endpoint response | ⚠️ Depends |
+| [CordCat](https://cord.cat/) | User | Discord sanctions, data breaches and risk scoring | Required |
+| [Dangercord](https://status.dangercord.com/) | User | Dangercord blacklist and report counts | Required |
+| [Ratter Scanner](https://discord.gg/wEDbPRHyeB) | File | Looks up `.jar` attachments in a database of known malicious and known safe Minecraft files | N/A |
+| [UBFB](https://ubfb.theindiebrand.es/) | User | Community-run shared blacklist of scam, raid and dox reports. Can also submit reports | N/A |
+| [XN Protect](https://xnprotect.com/) | User | Community global-ban list for Discord | N/A |
 
+### Built-in Analyzers
+
+Always available, not part of the community scanner section.
+
+| Service | Target | What it does | API Key |
+| --- | --- | --- | --- |
+| CertPL | Domain | Checks the domain against the CERT.PL national phishing blocklist | N/A |
+| FishFish | Domain | Community phishing and scam domain database | N/A |
+| Sucuri | Domain | Website reputation and malware rating | N/A |
+| CrtSh | Domain | Certificate transparency history, exposes newly registered domains | N/A |
+| WhereGoes | URL | Traces the full redirect chain to the real destination | N/A |
+| [WaybackMachine](https://archive.org) | URL | Looks for an archived snapshot to see what the page used to serve | N/A |
+| DiscordInvite | Invite | Resolves the invite: server info, counts, features, widget members | N/A |
+| BotProfile | Bot | Inspects a bot account's public profile and status | N/A |
+| [VirusTotal](https://www.virustotal.com) | File | Multi-engine scanner verdicts | Partial, hash lookup works without a key, uploading a file needs one |
+| [HybridAnalysis](https://hybrid-analysis.com/) | URL/File | Sandbox detonation and multi-scanner verdicts | Required |
+| ModularScan | URL/File | Sends the URL or file to your own custom HTTP endpoints | Depends on the endpoint you configure |
 
 ### Discord Invite Details
 
@@ -105,20 +119,23 @@ Note: Discord widget API has member listing limits. Plugin applies local cutoff 
 
 ## Without API Key vs With API Key
 
-**Without API Key (Available):**
+**Works without any API key:**
 - Discord invite analysis
 - Domain blocklist checks (CERT.PL, FishFish, Sucuri, crt.sh)
-- URL redirect tracing (WhereGoes)
+- URL redirect tracing (WhereGoes) and archive snapshots (Wayback Machine)
+- Jar file hash lookup (Ratter Scanner)
+- User reputation via UBFB and XN Protect
 - Bot profile analysis
 - Whitelist/blocklist filters
 - Search User / Search Server shortcuts, unknown user analyzer
 - VirusTotal hash lookup (no upload)
-- Modular Scan (if endpoint allows)
+- Modular Scan (if your endpoint allows it)
 
-**With API Keys (Additional):**
-- VirusTotal: File upload + report polling
+**Unlocked by an API key:**
+- VirusTotal: file upload + report polling
 - Hybrid Analysis: URL/file quick scan + result polling
-- Dangercord: User reputation lookup
+- Dangercord: user reputation lookup
+- CordCat: user reputation, sanctions and breach records
 
 ---
 
@@ -128,9 +145,10 @@ Note: Discord widget API has member listing limits. Plugin applies local cutoff 
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| virusTotalApiKey | string | — | VirusTotal API key |
-| dangercordApiKey | string | — | Dangercord API key |
-| hybridAnalysisApiKey | string | — | Hybrid Analysis API key |
+| virusTotalApiKey | string | N/A | VirusTotal API key |
+| dangecordApiKey | string | N/A | Dangercord API key |
+| hybridAnalysisApiKey | string | N/A | Hybrid Analysis API key |
+| cordCatApiKey | string | N/A | CordCat API key |
 
 ### Protection
 
@@ -182,14 +200,14 @@ Note: Discord widget API has member listing limits. Plugin applies local cutoff 
 | useBuiltinWhitelist | bool | true | Internal whitelist |
 | enableBlocklists | bool | true | Blocklist checking |
 | enableFmhyBlocklist | bool | true | FMHY Unsafe list |
-| customWhitelist | str | — | Custom white domains |
-| customBlocklist | str | — | Custom black domains |
+| customWhitelist | str | N/A | Custom white domains |
+| customBlocklist | str | N/A | Custom black domains |
 
 ### Advanced
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| modularScanSettings | UI | — | Custom HTTP module editor |
+| modularScanSettings | UI | N/A | Custom HTTP module editor |
 
 ---
 
@@ -199,8 +217,8 @@ Note: Discord widget API has member listing limits. Plugin applies local cutoff 
 
 | Group | Actions |
 | --- | --- |
-| User | Scan author with Dangercord |
-| Files | Scan file with VirusTotal / Hybrid Analysis |
+| User | Scan author reputation (all enabled services, or one per service), Scan author with CordCat, Report author to UBFB |
+| Files | Scan file with VirusTotal / Hybrid Analysis / Ratter Scanner (jar) |
 | URL | Trace URL (WhereGoes), crt.sh, CERT.PL, FishFish, Sucuri, Hybrid Analysis |
 | Invite | Analyze Discord invite |
 | Modular | Run custom modules compatible with URL/file |
@@ -210,14 +228,15 @@ Note: Discord widget API has member listing limits. Plugin applies local cutoff 
 | Group | Actions |
 | --- | --- |
 | Search User | top.gg, DiscordHub |
-| Reputation | Scan with Dangercord |
-| Reputation | Scan with CordCat |
+| Reputation | Scan user reputation (unified), or one entry per enabled service: Dangercord, CordCat, UBFB, XN Protect |
+| Analyze | Analyze User with CordCat |
+| Report | Report User to UBFB |
 
 ### Guild context / guild-header-popout
 
 | Group | Actions |
 | --- | --- |
-| Search Server | Disboard, DiscordServers |
+| Search Server | Disboard, DiscordServers, DiscordPlace, Discords |
 
 ---
 
@@ -270,8 +289,4 @@ Active blocklists:
 <img width="596" height="791" alt="image" src="https://github.com/user-attachments/assets/5b8fd4d0-70e8-40df-8d54-785e0c32eec1" />
 <img width="605" height="796" alt="image" src="https://github.com/user-attachments/assets/5f80c6b0-f23b-4a04-92dc-ea2ecd5b56da" />
 <img width="602" height="796" alt="image" src="https://github.com/user-attachments/assets/91a536ec-336e-45ca-a815-66304617bf5f" />
-
-
-
-
-
+ <img width="597" height="798" alt="image" src="https://github.com/user-attachments/assets/6b9a4e55-0297-40ed-b09a-d872133dde45" />

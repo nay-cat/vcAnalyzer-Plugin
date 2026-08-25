@@ -17,6 +17,7 @@ import { analyzeFileWithHybridAnalysis, analyzeUrlWithHybridAnalysis } from "./a
 import { analyzeBotProfile } from "./analyzers/BotProfile";
 import { runModularScan } from "./analyzers/ModularScan";
 import { analyzeWithSucuriDetailed } from "./analyzers/Sucuri";
+import { analyzeFileWithRatterScanner, isJarFile } from "./analyzers/RatterScanner";
 import { analyzeWithVirusTotal } from "./analyzers/VirusTotal";
 import { analyzeWithWhereGoes } from "./analyzers/WhereGoes";
 import { getModulesSync, ModularScanModule } from "./modularScanStore";
@@ -414,6 +415,13 @@ export function autoAnalyzeMessage(message: Message) {
                     runScan(message.id, attachment.url, () => analyzeFileWithHybridAnalysis(attachment.url, attachment.filename, true), "Auto file scan error");
                 }
             }
+
+            // ratterscanner (.jar only)
+            if (s.autoScanFilesRatterScanner) {
+                for (const attachment of scannableAttachments.filter(a => isJarFile(a.filename))) {
+                    runScan(message.id, attachment.url, () => analyzeFileWithRatterScanner(attachment.url, attachment.filename, true), "Auto file scan error");
+                }
+            }
         }
     }
 
@@ -433,6 +441,11 @@ export function autoAnalyzeMessage(message: Message) {
                 if (s.autoScanFilesHybridAnalysis) {
                     for (const file of cdnFiles) {
                         runScan(message.id, file.url, () => analyzeFileWithHybridAnalysis(file.url, file.fileName, true), "CDN file scan error");
+                    }
+                }
+                if (s.autoScanFilesRatterScanner) {
+                    for (const file of cdnFiles.filter(f => isJarFile(f.fileName))) {
+                        runScan(message.id, file.url, () => analyzeFileWithRatterScanner(file.url, file.fileName, true), "CDN file scan error");
                     }
                 }
             }

@@ -106,8 +106,7 @@ interface UserInfo {
     primary_guild?: GuildTag;
 }
 
-const TEXT_NORMAL = "var(--text-normal, var(--header-primary, #dcddde))";
-const TEXT_MUTED = "var(--text-muted, var(--header-secondary, #b5bac1))";
+import { Field, SectionTitle, Tag, TEXT_MUTED, TEXT_NORMAL } from "../../components/modalPrimitives";
 
 const RISK_COLORS: Record<string, string> = {
     low: "var(--status-positive)",
@@ -135,23 +134,6 @@ function fmtDateTime(value: string | undefined | null) {
 
 function riskColor(level: string | undefined) {
     return RISK_COLORS[(level ?? "").toLowerCase()] ?? TEXT_MUTED;
-}
-
-function Tag({ children, color }: { children: React.ReactNode; color: string; }) {
-    return (
-        <span style={{ background: color, color: "#fff", borderRadius: 3, padding: "1px 6px", fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const }}>
-            {children}
-        </span>
-    );
-}
-
-function Field({ label, value }: { label: string; value: string; }) {
-    return (
-        <div style={{ display: "flex", gap: 8, fontSize: 13, marginBottom: 2 }}>
-            <span style={{ color: TEXT_MUTED, minWidth: 100, flexShrink: 0 }}>{label}</span>
-            <span style={{ color: TEXT_NORMAL }}>{value}</span>
-        </div>
-    );
 }
 
 function SanctionCard({ s }: { s: StatementData; }) {
@@ -210,14 +192,6 @@ function SignalRow({ s }: { s: ScoreSignal; }) {
                 <span style={{ color: TEXT_NORMAL, fontWeight: 600 }}>{s.label}</span>
                 {s.detail && <span style={{ color: TEXT_MUTED }}> — {s.detail}</span>}
             </div>
-        </div>
-    );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode; }) {
-    return (
-        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: TEXT_MUTED, borderBottom: "1px solid var(--background-modifier-accent)", paddingBottom: 3, marginBottom: 8, marginTop: 4 }}>
-            {children}
         </div>
     );
 }

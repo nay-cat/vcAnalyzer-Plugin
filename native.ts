@@ -16,3 +16,6 @@ export { querySucuri } from "./analyzers/Sucuri/native";
 export { traceUrl } from "./analyzers/WhereGoes/native";
 export { executeModularScan } from "./analyzers/ModularScan/native";
 export { queryCordCat } from "./analyzers/CordCat/native";
+export { queryRatterScanner } from "./analyzers/RatterScanner/native";
+export { queryUbfb, submitUbfbReport } from "./analyzers/UBFB/native";
+export { queryXnProtect } from "./analyzers/XNProtect/native";
